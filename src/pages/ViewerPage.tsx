@@ -96,6 +96,10 @@ export function ViewerPage() {
           scale: 1.5,
         })
         renderTaskRef.current = { id: requestId, task: renderTask }
+        if (isStale()) {
+          renderTask.cancel()
+          return
+        }
         await renderTask.promise
       }
     })()
