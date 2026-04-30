@@ -33,12 +33,19 @@ export async function startRenderPageToCanvas(opts: {
   pageIndex: number
   canvas: HTMLCanvasElement
   scale: number
-}): Promise<{ viewportW: number; viewportH: number; renderTask: RenderTask }> {
+}): Promise<{
+  viewportW: number
+  viewportH: number
+  refViewportW: number
+  refViewportH: number
+  renderTask: RenderTask
+}> {
   const { pdf, pageIndex, canvas, scale } = opts
 
   const pageNumber = pageIndex + 1
   const page = await pdf.getPage(pageNumber)
 
+  const refViewport = page.getViewport({ scale: 1 })
   const viewport = page.getViewport({ scale })
 
   canvas.width = Math.ceil(viewport.width)
@@ -54,6 +61,8 @@ export async function startRenderPageToCanvas(opts: {
   return {
     viewportW: viewport.width,
     viewportH: viewport.height,
+    refViewportW: refViewport.width,
+    refViewportH: refViewport.height,
     renderTask,
   }
 }

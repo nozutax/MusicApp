@@ -4,7 +4,17 @@ import { Link, useParams } from 'react-router-dom'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import type { RenderTask } from 'pdfjs-dist/types/src/display/api'
 import { homePath } from '../app/paths'
-import { getPdfBytes, getScoreMeta, putScore, type ScoreMeta } from '../lib/db'
+import { canvasPointToRef, clientPointToCanvas } from '../lib/annotation/coords'
+import { paintAnnotationLayer } from '../lib/annotation/paint'
+import {
+  getPageAnnotations,
+  getPdfBytes,
+  getScoreMeta,
+  putPageAnnotations,
+  putScore,
+  type ScoreMeta,
+  type Stroke,
+} from '../lib/db'
 import { classifyHorizontalSwipe } from '../lib/gesture'
 import {
   createPdfLoadingTask,
@@ -13,6 +23,14 @@ import {
 } from '../lib/pdf'
 
 const SWIPE = { minDx: 120, maxDy: 60 }
+
+type PageLayout = {
+  dispW: number
+  dispH: number
+  refW: number
+  refH: number
+  pageIndex: number
+}
 
 export function ViewerPage() {
   const { scoreId } = useParams<{ scoreId?: string }>()
@@ -23,9 +41,18 @@ export function ViewerPage() {
   const [pageIndex, setPageIndex] = useState(0)
   const [pdfToken, setPdfToken] = useState(0)
 
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const pdfCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const annoCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const pdfRef = useRef<PDFDocumentProxy | null>(null)
   const touchStartRef = useRef<{ x: number; y: number } | null>(null)
+
+  const layoutRef = useRef<PageLayout | null>(null)
+  const pageStrokesRef = useRef<Stroke[]>([])
+  const activeStrokeRef = useRef<Stroke | null>(null)
+  const penPointerIdRef = useRef<number | null>(null)
+  const penStyleRef = useRef<{ color: 'black' | 'red' | 'blue'; width: 1 | 2 | 3 }>(
+    { color: 'black', width: 2 },
+  )
 
   const renderRequestSeqRef = useRef(0)
   const loadRequestSeqRef = useRef(0)
@@ -33,6 +60,21 @@ export function ViewerPage() {
     null,
   )
   const renderTaskRef = useRef<{ id: number; task: RenderTask } | null>(null)
+
+  function redrawAnnotationCanvas() {
+    const layout = layoutRef.current
+    const anno = annoCanvasRef.current
+    if (!layout || !anno) return
+    const ctx = anno.getContext('2d')
+    if (!ctx) return
+    paintAnnotationLayer(
+      ctx,
+      { w: layout.dispW, h: layout.dispH },
+      { w: layout.refW, h: layout.refH },
+      pageStrokesRef.current,
+      activeStrokeRef.current,
+    )
+  }
 
   useEffect(() => {
     if (!scoreId) return
@@ -44,6 +86,8 @@ export function ViewerPage() {
       loadingTaskRef.current = null
     }
     pdfRef.current = null
+    layoutRef.current = null
+    pageStrokesRef.current = []
 
     let didCleanup = false
     const isStale = () =>
@@ -135,7 +179,7 @@ export function ViewerPage() {
       didCleanup || requestId !== renderRequestSeqRef.current
 
     void (async () => {
-      const canvas = canvasRef.current
+      const canvas = pdfCanvasRef.current
       if (!canvas) return
 
       const numPages = pdf.numPages
@@ -144,18 +188,54 @@ export function ViewerPage() {
         Math.max(0, numPages - 1),
       )
 
-      const { renderTask } = await startRenderPageToCanvas({
-        pdf,
-        pageIndex: safeIndex,
-        canvas,
-        scale: 1.5,
-      })
+      const { renderTask, refViewportW, refViewportH } =
+        await startRenderPageToCanvas({
+          pdf,
+          pageIndex: safeIndex,
+          canvas,
+          scale: 1.5,
+        })
       renderTaskRef.current = { id: requestId, task: renderTask }
       if (isStale()) {
         renderTask.cancel()
         return
       }
       await renderTask.promise
+      if (isStale()) return
+
+      const anno = annoCanvasRef.current
+      if (!anno) return
+
+      const dispW = canvas.width
+      const dispH = canvas.height
+
+      anno.width = dispW
+      anno.height = dispH
+
+      layoutRef.current = {
+        dispW,
+        dispH,
+        refW: refViewportW,
+        refH: refViewportH,
+        pageIndex: safeIndex,
+      }
+
+      const rec = await getPageAnnotations(scoreId, safeIndex)
+      if (isStale()) return
+
+      const strokes = rec?.strokes ?? []
+      pageStrokesRef.current = strokes
+
+      const actx = anno.getContext('2d')
+      if (actx) {
+        paintAnnotationLayer(
+          actx,
+          { w: dispW, h: dispH },
+          { w: refViewportW, h: refViewportH },
+          strokes,
+          null,
+        )
+      }
     })().catch((e) => {
       if (isStale()) return
       setError(e instanceof Error ? e.message : String(e))
@@ -209,6 +289,94 @@ export function ViewerPage() {
     touchStartRef.current = null
   }
 
+  const onPenPointerDown = (e: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (e.pointerType !== 'pen') return
+    const layout = layoutRef.current
+    const anno = annoCanvasRef.current
+    if (!layout || !anno || !scoreId) return
+
+    e.preventDefault()
+    try {
+      anno.setPointerCapture(e.pointerId)
+    } catch {
+      /* ignore */
+    }
+    penPointerIdRef.current = e.pointerId
+
+    const { x: cx, y: cy } = clientPointToCanvas(e.clientX, e.clientY, anno)
+    const { x: rx, y: ry } = canvasPointToRef(
+      cx,
+      cy,
+      { w: layout.dispW, h: layout.dispH },
+      { w: layout.refW, h: layout.refH },
+    )
+
+    activeStrokeRef.current = {
+      tool: 'pen',
+      color: penStyleRef.current.color,
+      width: penStyleRef.current.width,
+      points: [{ x: rx, y: ry, t: performance.now() }],
+    }
+    redrawAnnotationCanvas()
+  }
+
+  const onPenPointerMove = (e: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (e.pointerType !== 'pen') return
+    if (penPointerIdRef.current !== e.pointerId) return
+    const layout = layoutRef.current
+    const anno = annoCanvasRef.current
+    const active = activeStrokeRef.current
+    if (!layout || !anno || !active) return
+
+    const { x: cx, y: cy } = clientPointToCanvas(e.clientX, e.clientY, anno)
+    const { x: rx, y: ry } = canvasPointToRef(
+      cx,
+      cy,
+      { w: layout.dispW, h: layout.dispH },
+      { w: layout.refW, h: layout.refH },
+    )
+    active.points.push({ x: rx, y: ry, t: performance.now() })
+    redrawAnnotationCanvas()
+  }
+
+  const finishPenStroke = (e: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (e.pointerType !== 'pen') return
+    if (penPointerIdRef.current !== e.pointerId) return
+    penPointerIdRef.current = null
+
+    const anno = annoCanvasRef.current
+    const layout = layoutRef.current
+    const active = activeStrokeRef.current
+    activeStrokeRef.current = null
+
+    if (anno) {
+      try {
+        anno.releasePointerCapture(e.pointerId)
+      } catch {
+        /* ignore */
+      }
+    }
+
+    if (!active || active.points.length === 0 || !layout || !scoreId) {
+      redrawAnnotationCanvas()
+      return
+    }
+
+    const next = [...pageStrokesRef.current, active]
+    pageStrokesRef.current = next
+
+    void putPageAnnotations({
+      scoreId,
+      page: layout.pageIndex,
+      updatedAt: Date.now(),
+      viewportW: layout.refW,
+      viewportH: layout.refH,
+      strokes: next,
+    })
+
+    redrawAnnotationCanvas()
+  }
+
   if (!scoreId) {
     return (
       <div>
@@ -246,10 +414,41 @@ export function ViewerPage() {
         onPointerUp={onTouchPointerUp}
         onPointerCancel={onTouchPointerCancel}
       >
-        <canvas
-          ref={canvasRef}
-          style={{ maxWidth: '100%', border: '1px solid #ddd' }}
-        />
+        <div
+          style={{
+            position: 'relative',
+            display: 'inline-block',
+            maxWidth: '100%',
+            lineHeight: 0,
+          }}
+        >
+          <canvas
+            ref={pdfCanvasRef}
+            style={{
+              display: 'block',
+              maxWidth: '100%',
+              height: 'auto',
+              border: '1px solid #ddd',
+            }}
+          />
+          <canvas
+            ref={annoCanvasRef}
+            onPointerDown={onPenPointerDown}
+            onPointerMove={onPenPointerMove}
+            onPointerUp={finishPenStroke}
+            onPointerCancel={finishPenStroke}
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              display: 'block',
+              maxWidth: '100%',
+              height: 'auto',
+              pointerEvents: 'auto',
+              touchAction: 'none',
+            }}
+          />
+        </div>
       </div>
 
       <p>
