@@ -1,13 +1,18 @@
 ﻿import { useEffect, useRef, useState } from 'react'
+import type { PointerEvent as ReactPointerEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import type { PDFDocumentProxy } from 'pdfjs-dist'
 import type { RenderTask } from 'pdfjs-dist/types/src/display/api'
 import { homePath } from '../app/paths'
 import { getPdfBytes, getScoreMeta, putScore, type ScoreMeta } from '../lib/db'
+import { classifyHorizontalSwipe } from '../lib/gesture'
 import {
   createPdfLoadingTask,
   startRenderPageToCanvas,
   type PdfLoadingTask,
 } from '../lib/pdf'
+
+const SWIPE = { minDx: 120, maxDy: 60 }
 
 export function ViewerPage() {
   const { scoreId } = useParams<{ scoreId?: string }>()
@@ -15,10 +20,15 @@ export function ViewerPage() {
   const [meta, setMeta] = useState<ScoreMeta | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [pageIndex, setPageIndex] = useState(0)
+  const [pdfToken, setPdfToken] = useState(0)
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const pdfRef = useRef<PDFDocumentProxy | null>(null)
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
 
-  const requestSeqRef = useRef(0)
+  const renderRequestSeqRef = useRef(0)
+  const loadRequestSeqRef = useRef(0)
   const loadingTaskRef = useRef<{ id: number; task: PdfLoadingTask } | null>(
     null,
   )
@@ -27,24 +37,22 @@ export function ViewerPage() {
   useEffect(() => {
     if (!scoreId) return
 
-    const requestId = ++requestSeqRef.current
+    const requestId = ++loadRequestSeqRef.current
 
-    // Cancel any previous work (avoids stale updates & leaks).
-    if (renderTaskRef.current) {
-      renderTaskRef.current.task.cancel()
-      renderTaskRef.current = null
-    }
     if (loadingTaskRef.current) {
       loadingTaskRef.current.task.destroy()
       loadingTaskRef.current = null
     }
+    pdfRef.current = null
 
     let didCleanup = false
-    const isStale = () => didCleanup || requestId !== requestSeqRef.current
+    const isStale = () =>
+      didCleanup || requestId !== loadRequestSeqRef.current
 
-    ;(async () => {
+    void (async () => {
       setIsLoading(true)
       setError(null)
+      setPageIndex(0)
 
       const [loadedMeta, pdfBytes] = await Promise.all([
         getScoreMeta(scoreId),
@@ -72,6 +80,8 @@ export function ViewerPage() {
       const pdf = await loadingTask.promise
       if (isStale()) return
 
+      pdfRef.current = pdf
+
       const nextMeta =
         loadedMeta.pageCount !== pdf.numPages
           ? ({
@@ -87,21 +97,7 @@ export function ViewerPage() {
         setMeta(nextMeta)
       }
 
-      const canvas = canvasRef.current
-      if (canvas) {
-        const { renderTask } = await startRenderPageToCanvas({
-          pdf,
-          pageIndex: 0,
-          canvas,
-          scale: 1.5,
-        })
-        renderTaskRef.current = { id: requestId, task: renderTask }
-        if (isStale()) {
-          renderTask.cancel()
-          return
-        }
-        await renderTask.promise
-      }
+      setPdfToken((t) => t + 1)
     })()
       .catch((e) => {
         if (isStale()) return
@@ -114,13 +110,6 @@ export function ViewerPage() {
 
     return () => {
       didCleanup = true
-
-      const currentRender = renderTaskRef.current
-      if (currentRender?.id === requestId) {
-        currentRender.task.cancel()
-        renderTaskRef.current = null
-      }
-
       const currentLoading = loadingTaskRef.current
       if (currentLoading?.id === requestId) {
         currentLoading.task.destroy()
@@ -128,6 +117,97 @@ export function ViewerPage() {
       }
     }
   }, [scoreId])
+
+  useEffect(() => {
+    if (!scoreId) return
+    const pdf = pdfRef.current
+    if (!pdf) return
+
+    const requestId = ++renderRequestSeqRef.current
+
+    if (renderTaskRef.current) {
+      renderTaskRef.current.task.cancel()
+      renderTaskRef.current = null
+    }
+
+    let didCleanup = false
+    const isStale = () =>
+      didCleanup || requestId !== renderRequestSeqRef.current
+
+    void (async () => {
+      const canvas = canvasRef.current
+      if (!canvas) return
+
+      const numPages = pdf.numPages
+      const safeIndex = Math.min(
+        Math.max(0, pageIndex),
+        Math.max(0, numPages - 1),
+      )
+
+      const { renderTask } = await startRenderPageToCanvas({
+        pdf,
+        pageIndex: safeIndex,
+        canvas,
+        scale: 1.5,
+      })
+      renderTaskRef.current = { id: requestId, task: renderTask }
+      if (isStale()) {
+        renderTask.cancel()
+        return
+      }
+      await renderTask.promise
+    })().catch((e) => {
+      if (isStale()) return
+      setError(e instanceof Error ? e.message : String(e))
+    })
+
+    return () => {
+      didCleanup = true
+      const currentRender = renderTaskRef.current
+      if (currentRender?.id === requestId) {
+        currentRender.task.cancel()
+        renderTaskRef.current = null
+      }
+    }
+  }, [scoreId, pageIndex, pdfToken])
+
+  const onTouchPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== 'touch') return
+    touchStartRef.current = { x: e.clientX, y: e.clientY }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+
+  const onTouchPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== 'touch') return
+    const start = touchStartRef.current
+    touchStartRef.current = null
+    if (!start) return
+
+    const dx = e.clientX - start.x
+    const dy = e.clientY - start.y
+    const dir = classifyHorizontalSwipe({ dx, dy }, SWIPE)
+
+    const total =
+      meta?.pageCount ?? pdfRef.current?.numPages ?? 0
+    if (total <= 0) return
+    const maxPage = total - 1
+
+    if (dir === 'next') {
+      setPageIndex((p) => {
+        const clamped = Math.min(Math.max(0, p), maxPage)
+        return Math.min(clamped + 1, maxPage)
+      })
+    } else if (dir === 'prev') {
+      setPageIndex((p) => {
+        const clamped = Math.min(Math.max(0, p), maxPage)
+        return Math.max(clamped - 1, 0)
+      })
+    }
+  }
+
+  const onTouchPointerCancel = () => {
+    touchStartRef.current = null
+  }
 
   if (!scoreId) {
     return (
@@ -141,6 +221,11 @@ export function ViewerPage() {
     )
   }
 
+  const pageLabel =
+    meta && meta.pageCount > 0
+      ? `${Math.min(pageIndex, meta.pageCount - 1) + 1} / ${meta.pageCount}`
+      : '?'
+
   return (
     <div>
       <h2>Viewer</h2>
@@ -152,13 +237,20 @@ export function ViewerPage() {
         <strong>File:</strong> {meta?.filename ?? '?'}
       </p>
       <p>
-        <strong>Pages:</strong> {meta ? meta.pageCount : '?'}
+        <strong>Page:</strong> {pageLabel}
       </p>
 
-      <canvas
-        ref={canvasRef}
-        style={{ maxWidth: '100%', border: '1px solid #ddd' }}
-      />
+      <div
+        style={{ touchAction: 'none' }}
+        onPointerDown={onTouchPointerDown}
+        onPointerUp={onTouchPointerUp}
+        onPointerCancel={onTouchPointerCancel}
+      >
+        <canvas
+          ref={canvasRef}
+          style={{ maxWidth: '100%', border: '1px solid #ddd' }}
+        />
+      </div>
 
       <p>
         <Link to={homePath()}>Back to Home</Link>
