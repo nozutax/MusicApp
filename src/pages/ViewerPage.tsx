@@ -1,8 +1,13 @@
-﻿import { useCallback, useEffect, useRef, useState } from 'react'
+﻿import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import type { RenderTask } from 'pdfjs-dist/types/src/display/api'
 import { homePath } from '../app/paths'
 import { getPdfBytes, getScoreMeta, putScore, type ScoreMeta } from '../lib/db'
-import { loadPdf, renderPageToCanvas } from '../lib/pdf'
+import {
+  createPdfLoadingTask,
+  startRenderPageToCanvas,
+  type PdfLoadingTask,
+} from '../lib/pdf'
 
 export function ViewerPage() {
   const { scoreId } = useParams<{ scoreId?: string }>()
@@ -12,12 +17,32 @@ export function ViewerPage() {
   const [isLoading, setIsLoading] = useState(false)
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const mountedRef = useRef(false)
 
-  const load = useCallback(async () => {
+  const requestSeqRef = useRef(0)
+  const loadingTaskRef = useRef<{ id: number; task: PdfLoadingTask } | null>(
+    null,
+  )
+  const renderTaskRef = useRef<{ id: number; task: RenderTask } | null>(null)
+
+  useEffect(() => {
     if (!scoreId) return
 
-    try {
+    const requestId = ++requestSeqRef.current
+
+    // Cancel any previous work (avoids stale updates & leaks).
+    if (renderTaskRef.current) {
+      renderTaskRef.current.task.cancel()
+      renderTaskRef.current = null
+    }
+    if (loadingTaskRef.current) {
+      loadingTaskRef.current.task.destroy()
+      loadingTaskRef.current = null
+    }
+
+    let didCleanup = false
+    const isStale = () => didCleanup || requestId !== requestSeqRef.current
+
+    ;(async () => {
       setIsLoading(true)
       setError(null)
 
@@ -26,7 +51,7 @@ export function ViewerPage() {
         getPdfBytes(scoreId),
       ])
 
-      if (!mountedRef.current) return
+      if (isStale()) return
 
       if (!loadedMeta) {
         setMeta(null)
@@ -41,8 +66,11 @@ export function ViewerPage() {
         return
       }
 
-      const pdf = await loadPdf(pdfBytes)
-      if (!mountedRef.current) return
+      const loadingTask = createPdfLoadingTask(pdfBytes)
+      loadingTaskRef.current = { id: requestId, task: loadingTask }
+
+      const pdf = await loadingTask.promise
+      if (isStale()) return
 
       const nextMeta =
         loadedMeta.pageCount !== pdf.numPages
@@ -55,37 +83,47 @@ export function ViewerPage() {
 
       if (nextMeta !== loadedMeta) {
         await putScore(nextMeta)
-        if (!mountedRef.current) return
+        if (isStale()) return
         setMeta(nextMeta)
       }
 
       const canvas = canvasRef.current
       if (canvas) {
-        await renderPageToCanvas({
+        const { renderTask } = await startRenderPageToCanvas({
           pdf,
           pageIndex: 0,
           canvas,
           scale: 1.5,
         })
+        renderTaskRef.current = { id: requestId, task: renderTask }
+        await renderTask.promise
       }
-    } catch (e) {
-      if (!mountedRef.current) return
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      if (mountedRef.current) {
+    })()
+      .catch((e) => {
+        if (isStale()) return
+        setError(e instanceof Error ? e.message : String(e))
+      })
+      .finally(() => {
+        if (isStale()) return
         setIsLoading(false)
+      })
+
+    return () => {
+      didCleanup = true
+
+      const currentRender = renderTaskRef.current
+      if (currentRender?.id === requestId) {
+        currentRender.task.cancel()
+        renderTaskRef.current = null
+      }
+
+      const currentLoading = loadingTaskRef.current
+      if (currentLoading?.id === requestId) {
+        currentLoading.task.destroy()
+        loadingTaskRef.current = null
       }
     }
   }, [scoreId])
-
-  useEffect(() => {
-    mountedRef.current = true
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load()
-    return () => {
-      mountedRef.current = false
-    }
-  }, [load])
 
   if (!scoreId) {
     return (
@@ -103,14 +141,14 @@ export function ViewerPage() {
     <div>
       <h2>Viewer</h2>
 
-      {isLoading ? <p>Loading…</p> : null}
+      {isLoading ? <p>Loading...</p> : null}
       {error ? <p style={{ color: 'crimson' }}>{error}</p> : null}
 
       <p>
-        <strong>File:</strong> {meta?.filename ?? '—'}
+        <strong>File:</strong> {meta?.filename ?? '?'}
       </p>
       <p>
-        <strong>Pages:</strong> {meta ? meta.pageCount : '—'}
+        <strong>Pages:</strong> {meta ? meta.pageCount : '?'}
       </p>
 
       <canvas
@@ -124,5 +162,3 @@ export function ViewerPage() {
     </div>
   )
 }
-
-
