@@ -132,6 +132,15 @@ export async function putPdfBytes(
   await tx.done
 }
 
+
+
+export async function putImportedScore(meta: ScoreMeta, pdfBytes: ArrayBuffer): Promise<void> {
+  const db = await getDb();
+  const tx = db.transaction(['scores','pdfs'], 'readwrite');
+  await tx.objectStore('scores').put(meta);
+  await tx.objectStore('pdfs').put({ scoreId: meta.id, pdfBytes });
+  await tx.done;
+}
 export async function getScoreMeta(
   id: ScoreId,
 ): Promise<ScoreMeta | undefined> {

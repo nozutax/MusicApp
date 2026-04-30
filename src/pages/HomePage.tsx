@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { FileImportButton } from '../components/FileImportButton'
 import { listScores, type ScoreMeta } from '../lib/db'
@@ -6,26 +6,22 @@ import { viewerPath } from '../app/paths'
 
 export function HomePage() {
   const [scores, setScores] = useState<ScoreMeta[]>([])
+  const mountedRef = useRef(false)
 
   const refresh = useCallback(async () => {
     const rows = await listScores()
-    setScores(rows)
+    if (mountedRef.current) {
+      setScores(rows)
+    }
   }, [])
 
   useEffect(() => {
-    let cancelled = false
-
-    void (async () => {
-      const rows = await listScores()
-      if (!cancelled) {
-        setScores(rows)
-      }
-    })()
-
+    mountedRef.current = true
+    void refresh()
     return () => {
-      cancelled = true
+      mountedRef.current = false
     }
-  }, [])
+  }, [refresh])
 
   return (
     <div>
