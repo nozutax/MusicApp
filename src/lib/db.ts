@@ -81,14 +81,18 @@ export function getDb() {
             const pdfsStore = tx.objectStore('pdfs')
 
             const existing = await scoresStore.getAll()
-            for (const row of existing as Array<any>) {
-              if (row?.id && row?.pdfBytes) {
-                await pdfsStore.put({ scoreId: row.id, pdfBytes: row.pdfBytes })
+            type LegacyScoreRow = { [k: string]: unknown }
+            for (const row of existing as LegacyScoreRow[]) {
+              const id = row['id']
+              const pdfBytes = row['pdfBytes']
+              if (typeof id === 'string' && pdfBytes instanceof ArrayBuffer) {
+                await pdfsStore.put({ scoreId: id, pdfBytes })
               }
 
-              const { pdfBytes: _pdfBytes, ...meta } = row ?? {}
-              if (meta?.id) {
-                await scoresStore.put(meta)
+              const meta: Record<string, unknown> = { ...row }
+              delete meta['pdfBytes']
+              if (typeof meta['id'] === 'string') {
+                await scoresStore.put(meta as unknown as ScoreMeta)
               }
             }
           }
