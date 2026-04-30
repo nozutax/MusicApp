@@ -1,4 +1,5 @@
-﻿import './styles.css'
+﻿import { Outlet } from 'react-router-dom'
+import './styles.css'
 
 export function App() {
   return (
@@ -7,7 +8,7 @@ export function App() {
         <h1>Score Shelf</h1>
       </header>
       <main className="app__main">
-        <p>Placeholder</p>
+        <Outlet />
       </main>
     </div>
   )

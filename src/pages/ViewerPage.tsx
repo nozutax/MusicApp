@@ -1,14 +1,27 @@
 ﻿import { Link, useParams } from 'react-router-dom'
+import { homePath } from '../app/paths'
 
 export function ViewerPage() {
-  const { scoreId } = useParams()
+  const { scoreId } = useParams<{ scoreId?: string }>()
+
+  if (!scoreId) {
+    return (
+      <div>
+        <h2>Viewer</h2>
+        <p>Missing score id.</p>
+        <p>
+          <Link to={homePath()}>Back to Home</Link>
+        </p>
+      </div>
+    )
+  }
 
   return (
-    <div style={{ padding: 16 }}>
-      <h1>Viewer</h1>
+    <div>
+      <h2>Viewer</h2>
       <p>scoreId: {scoreId}</p>
       <p>
-        <Link to="/">Back to Home</Link>
+        <Link to={homePath()}>Back to Home</Link>
       </p>
     </div>
   )

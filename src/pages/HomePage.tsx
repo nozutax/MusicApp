@@ -1,12 +1,12 @@
 ﻿import { Link } from 'react-router-dom'
+import { viewerPath } from '../app/paths'
 
 export function HomePage() {
   return (
-    <div style={{ padding: 16 }}>
-      <h1>Score Shelf</h1>
+    <div>
       <p>Home</p>
       <p>
-        <Link to="/viewer/demo">Open demo score</Link>
+        <Link to={viewerPath('demo')}>Open demo score</Link>
       </p>
     </div>
   )
