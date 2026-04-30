@@ -1,4 +1,4 @@
-﻿import { type DBSchema, type IDBPDatabase, openDB } from 'idb'
+import { type DBSchema, type IDBPDatabase, openDB } from 'idb'
 
 export type ScoreId = string
 
@@ -14,12 +14,14 @@ export type ScoreRecord = {
 export type AnnotationPoint = {
   x: number
   y: number
+  t: number
 }
 
 export type Stroke = {
+  tool: 'pen' | 'eraser'
+  color?: 'black' | 'red' | 'blue'
+  width: 1 | 2 | 3
   points: AnnotationPoint[]
-  color?: string
-  width?: number
 }
 
 export type PageAnnotationRecord = {
@@ -65,11 +67,7 @@ export function getDb() {
 
 export async function listScores(): Promise<ScoreRecord[]> {
   const db = await getDb()
-  const tx = db.transaction('scores', 'readonly')
-  const index = tx.store.index('by-updatedAt')
-  const scores = await index.getAll()
-  await tx.done
-  return scores.sort((a, b) => b.updatedAt - a.updatedAt)
+  return db.getAllFromIndex('scores', 'by-updatedAt')
 }
 
 export async function putScore(score: ScoreRecord): Promise<void> {
