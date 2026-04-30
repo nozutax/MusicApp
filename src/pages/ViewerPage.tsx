@@ -6,6 +6,7 @@ import type { RenderTask } from 'pdfjs-dist/types/src/display/api'
 import { AnnotationToolbar } from '../components/AnnotationToolbar'
 import { homePath } from '../app/paths'
 import { canvasPointToRef, clientPointToCanvas } from '../lib/annotation/coords'
+import { strokeHitByCircle } from '../lib/annotation/eraser'
 import { paintAnnotationLayer } from '../lib/annotation/paint'
 import { StrokeHistory } from '../lib/annotation/strokeHistory'
 import {
@@ -25,6 +26,8 @@ import {
 } from '../lib/pdf'
 
 const SWIPE = { minDx: 120, maxDy: 60 }
+/** Eraser radius in **screen/CSS pixels**; mapped to reference coords via layout. */
+const ERASER_RADIUS_PX = 14
 
 type PageLayout = {
   dispW: number
@@ -44,6 +47,10 @@ export function ViewerPage() {
   const [pdfToken, setPdfToken] = useState(0)
   const [historyUi, setHistoryUi] = useState({ canUndo: false, canRedo: false })
 
+  const [tool, setTool] = useState<'pen' | 'eraser'>('pen')
+  const [penColor, setPenColor] = useState<'black' | 'red' | 'blue'>('black')
+  const [penWidth, setPenWidth] = useState<1 | 2 | 3>(2)
+
   const pdfCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const annoCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const pdfRef = useRef<PDFDocumentProxy | null>(null)
@@ -54,9 +61,8 @@ export function ViewerPage() {
   const pageStrokesRef = useRef<Stroke[]>([])
   const activeStrokeRef = useRef<Stroke | null>(null)
   const penPointerIdRef = useRef<number | null>(null)
-  const penStyleRef = useRef<{ color: 'black' | 'red' | 'blue'; width: 1 | 2 | 3 }>(
-    { color: 'black', width: 2 },
-  )
+  const eraserPointerIdRef = useRef<number | null>(null)
+  const eraserHitsRef = useRef<Set<number>>(new Set())
 
   const renderRequestSeqRef = useRef(0)
   const loadRequestSeqRef = useRef(0)
@@ -372,7 +378,7 @@ export function ViewerPage() {
     touchStartRef.current = null
   }
 
-  const onPenPointerDown = (e: ReactPointerEvent<HTMLCanvasElement>) => {
+  const onAnnotPointerDown = (e: ReactPointerEvent<HTMLCanvasElement>) => {
     if (e.pointerType !== 'pen') return
     const layout = layoutRef.current
     const anno = annoCanvasRef.current
@@ -384,6 +390,32 @@ export function ViewerPage() {
     } catch {
       /* ignore */
     }
+
+    if (tool === 'eraser') {
+      activeStrokeRef.current = null
+      penPointerIdRef.current = null
+      eraserPointerIdRef.current = e.pointerId
+      eraserHitsRef.current = new Set()
+
+      const { x: cx, y: cy } = clientPointToCanvas(e.clientX, e.clientY, anno)
+      const { x: rx, y: ry } = canvasPointToRef(
+        cx,
+        cy,
+        { w: layout.dispW, h: layout.dispH },
+        { w: layout.refW, h: layout.refH },
+      )
+      const rRef =
+        ERASER_RADIUS_PX * (layout.refW / layout.dispW)
+      const strokes = pageStrokesRef.current
+      for (let i = 0; i < strokes.length; i++) {
+        if (strokeHitByCircle(strokes[i], rx, ry, rRef)) {
+          eraserHitsRef.current.add(i)
+        }
+      }
+      return
+    }
+
+    eraserPointerIdRef.current = null
     penPointerIdRef.current = e.pointerId
 
     const { x: cx, y: cy } = clientPointToCanvas(e.clientX, e.clientY, anno)
@@ -396,20 +428,41 @@ export function ViewerPage() {
 
     activeStrokeRef.current = {
       tool: 'pen',
-      color: penStyleRef.current.color,
-      width: penStyleRef.current.width,
+      color: penColor,
+      width: penWidth,
       points: [{ x: rx, y: ry, t: performance.now() }],
     }
     redrawAnnotationCanvas()
   }
 
-  const onPenPointerMove = (e: ReactPointerEvent<HTMLCanvasElement>) => {
+  const onAnnotPointerMove = (e: ReactPointerEvent<HTMLCanvasElement>) => {
     if (e.pointerType !== 'pen') return
-    if (penPointerIdRef.current !== e.pointerId) return
     const layout = layoutRef.current
     const anno = annoCanvasRef.current
+    if (!layout || !anno) return
+
+    if (tool === 'eraser' && eraserPointerIdRef.current === e.pointerId) {
+      const { x: cx, y: cy } = clientPointToCanvas(e.clientX, e.clientY, anno)
+      const { x: rx, y: ry } = canvasPointToRef(
+        cx,
+        cy,
+        { w: layout.dispW, h: layout.dispH },
+        { w: layout.refW, h: layout.refH },
+      )
+      const rRef =
+        ERASER_RADIUS_PX * (layout.refW / layout.dispW)
+      const strokes = pageStrokesRef.current
+      for (let i = 0; i < strokes.length; i++) {
+        if (strokeHitByCircle(strokes[i], rx, ry, rRef)) {
+          eraserHitsRef.current.add(i)
+        }
+      }
+      return
+    }
+
+    if (penPointerIdRef.current !== e.pointerId) return
     const active = activeStrokeRef.current
-    if (!layout || !anno || !active) return
+    if (!active) return
 
     const { x: cx, y: cy } = clientPointToCanvas(e.clientX, e.clientY, anno)
     const { x: rx, y: ry } = canvasPointToRef(
@@ -422,15 +475,11 @@ export function ViewerPage() {
     redrawAnnotationCanvas()
   }
 
-  const finishPenStroke = (e: ReactPointerEvent<HTMLCanvasElement>) => {
+  const onAnnotPointerUp = (e: ReactPointerEvent<HTMLCanvasElement>) => {
     if (e.pointerType !== 'pen') return
-    if (penPointerIdRef.current !== e.pointerId) return
-    penPointerIdRef.current = null
 
     const anno = annoCanvasRef.current
     const layout = layoutRef.current
-    const active = activeStrokeRef.current
-    activeStrokeRef.current = null
 
     if (anno) {
       try {
@@ -439,6 +488,37 @@ export function ViewerPage() {
         /* ignore */
       }
     }
+
+    if (
+      tool === 'eraser' &&
+      eraserPointerIdRef.current === e.pointerId
+    ) {
+      eraserPointerIdRef.current = null
+      const hits = eraserHitsRef.current
+      eraserHitsRef.current = new Set()
+
+      if (!layout || !scoreId || hits.size === 0) {
+        return
+      }
+
+      const next = pageStrokesRef.current.filter((_, i) => !hits.has(i))
+      if (next.length === pageStrokesRef.current.length) {
+        return
+      }
+
+      pageStrokesRef.current = next
+      strokeHistoryRef.current?.commit(next)
+      void persistPageStrokes(next)
+      redrawAnnotationCanvas()
+      syncHistoryUi()
+      return
+    }
+
+    if (penPointerIdRef.current !== e.pointerId) return
+    penPointerIdRef.current = null
+
+    const active = activeStrokeRef.current
+    activeStrokeRef.current = null
 
     if (!active || active.points.length === 0 || !layout || !scoreId) {
       redrawAnnotationCanvas()
@@ -474,19 +554,25 @@ export function ViewerPage() {
 
   return (
     <div>
-      <h2>Viewer</h2>
+      <h2>閲覧</h2>
 
-      {isLoading ? <p>Loading...</p> : null}
+      {isLoading ? <p>読み込み中…</p> : null}
       {error ? <p style={{ color: 'crimson' }}>{error}</p> : null}
 
       <p>
-        <strong>File:</strong> {meta?.filename ?? '?'}
+        <strong>ファイル:</strong> {meta?.filename ?? '?'}
       </p>
       <p>
-        <strong>Page:</strong> {pageLabel}
+        <strong>ページ:</strong> {pageLabel}
       </p>
 
       <AnnotationToolbar
+        tool={tool}
+        onToolChange={setTool}
+        color={penColor}
+        onColorChange={setPenColor}
+        width={penWidth}
+        onWidthChange={setPenWidth}
         canUndo={historyUi.canUndo}
         canRedo={historyUi.canRedo}
         onUndo={handleUndo}
@@ -518,10 +604,10 @@ export function ViewerPage() {
           />
           <canvas
             ref={annoCanvasRef}
-            onPointerDown={onPenPointerDown}
-            onPointerMove={onPenPointerMove}
-            onPointerUp={finishPenStroke}
-            onPointerCancel={finishPenStroke}
+            onPointerDown={onAnnotPointerDown}
+            onPointerMove={onAnnotPointerMove}
+            onPointerUp={onAnnotPointerUp}
+            onPointerCancel={onAnnotPointerUp}
             style={{
               position: 'absolute',
               left: 0,
@@ -537,7 +623,7 @@ export function ViewerPage() {
       </div>
 
       <p>
-        <Link to={homePath()}>Back to Home</Link>
+        <Link to={homePath()}>一覧へ戻る</Link>
       </p>
     </div>
   )

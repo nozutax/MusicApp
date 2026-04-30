@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+﻿import { useCallback, useEffect, useRef, useState } from 'react'
 import { FileImportButton } from '../components/FileImportButton'
+import { ScoreList } from '../components/ScoreList'
 import { listScores, type ScoreMeta } from '../lib/db'
-import { viewerPath } from '../app/paths'
 
 export function HomePage() {
   const [scores, setScores] = useState<ScoreMeta[]>([])
@@ -25,7 +24,8 @@ export function HomePage() {
 
   return (
     <div>
-      <h2>Home</h2>
+      <h2>ライブラリ</h2>
+      <p>PDFを追加して曲を管理します。一覧のファイル名を開くと閲覧・手書きメモができます。</p>
 
       <FileImportButton
         onImported={async () => {
@@ -34,15 +34,11 @@ export function HomePage() {
       />
 
       {scores.length === 0 ? (
-        <p>No scores yet.</p>
+        <p style={{ marginTop: 16 }}>
+          まだ曲がありません。「PDF追加」から画譜を取り込んでください。
+        </p>
       ) : (
-        <ul>
-          {scores.map((score) => (
-            <li key={score.id}>
-              <Link to={viewerPath(score.id)}>{score.filename}</Link>
-            </li>
-          ))}
-        </ul>
+        <ScoreList scores={scores} onChanged={refresh} />
       )}
     </div>
   )
