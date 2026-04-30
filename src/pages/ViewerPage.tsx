@@ -1,11 +1,13 @@
-﻿import { useEffect, useRef, useState } from 'react'
+﻿import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import type { RenderTask } from 'pdfjs-dist/types/src/display/api'
+import { AnnotationToolbar } from '../components/AnnotationToolbar'
 import { homePath } from '../app/paths'
 import { canvasPointToRef, clientPointToCanvas } from '../lib/annotation/coords'
 import { paintAnnotationLayer } from '../lib/annotation/paint'
+import { StrokeHistory } from '../lib/annotation/strokeHistory'
 import {
   getPageAnnotations,
   getPdfBytes,
@@ -40,6 +42,7 @@ export function ViewerPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [pageIndex, setPageIndex] = useState(0)
   const [pdfToken, setPdfToken] = useState(0)
+  const [historyUi, setHistoryUi] = useState({ canUndo: false, canRedo: false })
 
   const pdfCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const annoCanvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -47,6 +50,7 @@ export function ViewerPage() {
   const touchStartRef = useRef<{ x: number; y: number } | null>(null)
 
   const layoutRef = useRef<PageLayout | null>(null)
+  const strokeHistoryRef = useRef<StrokeHistory | null>(null)
   const pageStrokesRef = useRef<Stroke[]>([])
   const activeStrokeRef = useRef<Stroke | null>(null)
   const penPointerIdRef = useRef<number | null>(null)
@@ -76,6 +80,77 @@ export function ViewerPage() {
     )
   }
 
+  const syncHistoryUi = useCallback(() => {
+    const h = strokeHistoryRef.current
+    setHistoryUi({
+      canUndo: h?.canUndo() ?? false,
+      canRedo: h?.canRedo() ?? false,
+    })
+  }, [])
+
+  const persistPageStrokes = useCallback(
+    (strokes: Stroke[]) => {
+      const layout = layoutRef.current
+      if (!layout || !scoreId) return
+      return putPageAnnotations({
+        scoreId,
+        page: layout.pageIndex,
+        updatedAt: Date.now(),
+        viewportW: layout.refW,
+        viewportH: layout.refH,
+        strokes,
+      })
+    },
+    [scoreId],
+  )
+
+  const handleUndo = useCallback(() => {
+    const h = strokeHistoryRef.current
+    if (!h) return
+    const prev = h.undo()
+    if (!prev) return
+    pageStrokesRef.current = prev
+    void persistPageStrokes(prev)
+    redrawAnnotationCanvas()
+    syncHistoryUi()
+  }, [persistPageStrokes, syncHistoryUi])
+
+  const handleRedo = useCallback(() => {
+    const h = strokeHistoryRef.current
+    if (!h) return
+    const next = h.redo()
+    if (!next) return
+    pageStrokesRef.current = next
+    void persistPageStrokes(next)
+    redrawAnnotationCanvas()
+    syncHistoryUi()
+  }, [persistPageStrokes, syncHistoryUi])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return
+      const el = e.target as HTMLElement | null
+      const tag = el?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || el?.isContentEditable)
+        return
+
+      if (e.key === 'z' || e.key === 'Z') {
+        if (e.shiftKey) {
+          e.preventDefault()
+          handleRedo()
+        } else {
+          e.preventDefault()
+          handleUndo()
+        }
+      } else if (e.key === 'y' || e.key === 'Y') {
+        e.preventDefault()
+        handleRedo()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [handleRedo, handleUndo])
+
   useEffect(() => {
     if (!scoreId) return
 
@@ -88,6 +163,7 @@ export function ViewerPage() {
     pdfRef.current = null
     layoutRef.current = null
     pageStrokesRef.current = []
+    strokeHistoryRef.current = null
 
     let didCleanup = false
     const isStale = () =>
@@ -226,6 +302,13 @@ export function ViewerPage() {
       const strokes = rec?.strokes ?? []
       pageStrokesRef.current = strokes
 
+      if (!strokeHistoryRef.current) {
+        strokeHistoryRef.current = new StrokeHistory()
+      }
+      strokeHistoryRef.current.reset(strokes)
+      if (isStale()) return
+      syncHistoryUi()
+
       const actx = anno.getContext('2d')
       if (actx) {
         paintAnnotationLayer(
@@ -249,7 +332,7 @@ export function ViewerPage() {
         renderTaskRef.current = null
       }
     }
-  }, [scoreId, pageIndex, pdfToken])
+  }, [scoreId, pageIndex, pdfToken, syncHistoryUi])
 
   const onTouchPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.pointerType !== 'touch') return
@@ -364,17 +447,12 @@ export function ViewerPage() {
 
     const next = [...pageStrokesRef.current, active]
     pageStrokesRef.current = next
+    strokeHistoryRef.current?.commit(next)
 
-    void putPageAnnotations({
-      scoreId,
-      page: layout.pageIndex,
-      updatedAt: Date.now(),
-      viewportW: layout.refW,
-      viewportH: layout.refH,
-      strokes: next,
-    })
+    void persistPageStrokes(next)
 
     redrawAnnotationCanvas()
+    syncHistoryUi()
   }
 
   if (!scoreId) {
@@ -407,6 +485,13 @@ export function ViewerPage() {
       <p>
         <strong>Page:</strong> {pageLabel}
       </p>
+
+      <AnnotationToolbar
+        canUndo={historyUi.canUndo}
+        canRedo={historyUi.canRedo}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+      />
 
       <div
         style={{ touchAction: 'none' }}
