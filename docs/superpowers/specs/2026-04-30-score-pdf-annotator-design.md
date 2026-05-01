@@ -74,6 +74,8 @@
   - `createdAt: number`
   - `updatedAt: number`
   - `pageCount: number`
+- `pdfs`
+  - `scoreId: string`
   - `pdfBytes: ArrayBuffer`（元PDF）
 - `annotations`
   - `scoreId: string`

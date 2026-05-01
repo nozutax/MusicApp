@@ -227,12 +227,16 @@ import { openDB, type DBSchema } from "idb";
 
 export type ScoreId = string;
 
-export type ScoreRecord = {
+export type ScoreMeta = {
   id: ScoreId;
   filename: string;
   createdAt: number;
   updatedAt: number;
   pageCount: number;
+};
+
+export type PdfRecord = {
+  scoreId: ScoreId;
   pdfBytes: ArrayBuffer;
 };
 
@@ -256,8 +260,12 @@ export type PageAnnotationRecord = {
 interface ScoreDb extends DBSchema {
   scores: {
     key: ScoreId;
-    value: ScoreRecord;
+    value: ScoreMeta;
     indexes: { "by-updatedAt": number };
+  };
+  pdfs: {
+    key: ScoreId;
+    value: PdfRecord;
   };
   annotations: {
     key: [ScoreId, number];
@@ -282,26 +290,38 @@ export async function getDb() {
   });
 }
 
-export async function listScores(): Promise<ScoreRecord[]> {
+export async function listScores(): Promise<ScoreMeta[]> {
   const db = await getDb();
   return db.getAllFromIndex("scores", "by-updatedAt");
 }
 
-export async function putScore(score: ScoreRecord) {
+export async function putScore(meta: ScoreMeta) {
   const db = await getDb();
-  await db.put("scores", score);
+  await db.put("scores", meta);
 }
 
 export async function deleteScore(scoreId: ScoreId) {
   const db = await getDb();
   await db.delete("scores", scoreId);
+  await db.delete("pdfs", scoreId);
   const keys = await db.getAllKeysFromIndex("annotations", "by-scoreId", scoreId);
   for (const k of keys) await db.delete("annotations", k);
 }
 
-export async function getScore(scoreId: ScoreId) {
+export async function getScoreMeta(scoreId: ScoreId) {
   const db = await getDb();
   return db.get("scores", scoreId);
+}
+
+export async function getPdfBytes(scoreId: ScoreId) {
+  const db = await getDb();
+  const rec = await db.get("pdfs", scoreId);
+  return rec?.pdfBytes;
+}
+
+export async function putPdfBytes(scoreId: ScoreId, pdfBytes: ArrayBuffer) {
+  const db = await getDb();
+  await db.put("pdfs", { scoreId, pdfBytes });
 }
 
 export async function getPageAnnotations(scoreId: ScoreId, page: number) {
@@ -366,7 +386,7 @@ export function FileImportButton(props: {
 
 - [ ] **Step 2: PDFをArrayBufferで保存**
 
-HomePage側で `crypto.randomUUID()` により `id` を生成し、`file.arrayBuffer()` した `pdfBytes` を `putScore()` する。`pageCount` は次タスクでPDF.js導入後に埋める（この時点では 0 を許容する）。
+HomePage側で `crypto.randomUUID()` により `id` を生成し、`file.arrayBuffer()` した `pdfBytes` は `putPdfBytes(id, pdfBytes)` で保存する。メタ情報（`filename/createdAt/updatedAt/pageCount`）は `putScore(meta)` で保存する（`pageCount` は次タスクでPDF.js導入後に埋めるため、この時点では 0 を許容する）。
 
 - [ ] **Step 3: Commit**
 
@@ -423,11 +443,11 @@ export async function renderPageToCanvas(opts: {
 
 - [ ] **Step 3: ViewerでPDFを表示（1ページ）**
 
-`ViewerPage` で `getScore(scoreId)`→`loadPdf(score.pdfBytes)`→`renderPageToCanvas` を実行する。最初は `pageIndex=0` 固定でOK。
+`ViewerPage` で `getScoreMeta(scoreId)` と `getPdfBytes(scoreId)` を取得し、`loadPdf(pdfBytes)`→`renderPageToCanvas` を実行する。最初は `pageIndex=0` 固定でOK。
 
 - [ ] **Step 4: ページ数をDBに反映**
 
-`pdf.numPages` を `ScoreRecord.pageCount` に反映し、`putScore()` で保存してHome一覧にも反映できるようにする。
+`pdf.numPages` を `ScoreMeta.pageCount` に反映し、`putScore()` で保存してHome一覧にも反映できるようにする。
 
 - [ ] **Step 5: Commit**
 
