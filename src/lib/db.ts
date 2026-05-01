@@ -157,7 +157,9 @@ export async function getPdfBytes(
 ): Promise<ArrayBuffer | undefined> {
   const db = await getDb()
   const row = await db.get('pdfs', scoreId)
-  return row?.pdfBytes
+  const raw = row?.pdfBytes
+  // Copy so pdf.js always gets an independent buffer (avoids rare detach / view issues from IDB).
+  return raw ? raw.slice(0) : undefined
 }
 
 export async function deleteScore(id: ScoreId): Promise<void> {

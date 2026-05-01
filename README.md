@@ -1,73 +1,44 @@
-# React + TypeScript + Vite
+# Score Shelf
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+画譜 PDF の閲覧と手書きメモ。PWA 対応で、一度開いたあとはオフラインでも利用できます（Service Worker がアプリ本体をキャッシュします）。
 
-Currently, two official plugins are available:
+## 開発
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm ci
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## GitHub に載せて、他の PC からインストール（オフライン利用）
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+1. **リポジトリを GitHub に push**（このフォルダをリポジトリのルートにする想定です）。
+2. **GitHub の設定**  
+   **Settings → Pages → Build and deployment → Source** で **GitHub Actions** を選ぶ。
+3. **`main`（または `master`）に push** すると `.github/workflows/deploy-github-pages.yml` が走り、`https://<ユーザー名>.github.io/<リポジトリ名>/` に公開されます。
+4. **他の PC のブラウザ**でその URL を開き、メニューから **「アプリをインストール」**（または「ホーム画面に追加」）を選ぶと、スタンドアロンで起動できます。
+5. **オフライン**では、**一度オンラインで開いてキャッシュが入ったあと**、同じインストール済みアプリから起動すれば利用できます。初回だけネット接続が必要です。
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+**注意:** 楽譜データはブラウザの IndexedDB に保存されるため、**端末ごと**です。別 PC ではその PC で PDF を取り込み直す必要があります。
+
+### ローカルで GitHub Pages と同じパスを試す
+
+リポジトリ名が `my-app` のとき:
+
+```bash
+# Windows PowerShell（リポジトリ名が my-app の例）
+$env:BASE_PATH="/my-app/"
+npm run build
+npm run preview
+```
+
+ターミナルに出る URL（通常は `http://localhost:4173/my-app/`）を開いて動作確認できます。プレビューでも同じ `BASE_PATH` を付けてください。
+
+### ユーザーサイト（`username.github.io` リポジトリでルート公開）の場合
+
+サイトが `https://username.github.io/` のルートになる場合は、`BASE_PATH` は **`/` のまま**ビルドしてください。ワークフローの `BASE_PATH` 行を削除するか、`env` を上書きする必要があります。
+
+## テスト
+
+```bash
+npm run test
 ```

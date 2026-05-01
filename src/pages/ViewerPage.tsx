@@ -1,4 +1,10 @@
-﻿import { useCallback, useEffect, useRef, useState } from 'react'
+﻿import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
@@ -37,8 +43,15 @@ type PageLayout = {
   pageIndex: number
 }
 
+/** 演奏時はPDF最大化・UI最小、メモ時はツールバーと情報を表示 */
+export type ViewerUiMode = 'perform' | 'annotate'
+
 export function ViewerPage() {
   const { scoreId } = useParams<{ scoreId?: string }>()
+
+  const [viewerUiMode, setViewerUiMode] = useState<ViewerUiMode>('perform')
+  const stageRef = useRef<HTMLDivElement | null>(null)
+  const [stageSize, setStageSize] = useState({ w: 0, h: 0 })
 
   const [meta, setMeta] = useState<ScoreMeta | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -157,6 +170,30 @@ export function ViewerPage() {
     return () => window.removeEventListener('keydown', onKey)
   }, [handleRedo, handleUndo])
 
+  useLayoutEffect(() => {
+    const el = stageRef.current
+    if (!el) return
+    const ro = new ResizeObserver((entries) => {
+      const cr = entries[0]?.contentRect
+      if (!cr) return
+      setStageSize({
+        w: Math.max(0, Math.floor(cr.width)),
+        h: Math.max(0, Math.floor(cr.height)),
+      })
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [viewerUiMode, scoreId])
+
+  useEffect(() => {
+    if (viewerUiMode !== 'perform') return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [viewerUiMode])
+
   useEffect(() => {
     if (!scoreId) return
 
@@ -270,12 +307,24 @@ export function ViewerPage() {
         Math.max(0, numPages - 1),
       )
 
+      const page = await pdf.getPage(safeIndex + 1)
+      const refViewport = page.getViewport({ scale: 1 })
+      const pad = 0.992
+      let scale = 1.5
+      const sw = stageSize.w
+      const sh = stageSize.h
+      if (sw > 24 && sh > 24) {
+        scale =
+          Math.min(sw / refViewport.width, sh / refViewport.height) * pad
+      }
+
       const { renderTask, refViewportW, refViewportH } =
         await startRenderPageToCanvas({
           pdf,
           pageIndex: safeIndex,
           canvas,
-          scale: 1.5,
+          scale,
+          page,
         })
       renderTaskRef.current = { id: requestId, task: renderTask }
       if (isStale()) {
@@ -301,6 +350,8 @@ export function ViewerPage() {
         refH: refViewportH,
         pageIndex: safeIndex,
       }
+
+      if (isStale()) return
 
       const rec = await getPageAnnotations(scoreId, safeIndex)
       if (isStale()) return
@@ -338,7 +389,14 @@ export function ViewerPage() {
         renderTaskRef.current = null
       }
     }
-  }, [scoreId, pageIndex, pdfToken, syncHistoryUi])
+  }, [
+    scoreId,
+    pageIndex,
+    pdfToken,
+    syncHistoryUi,
+    viewerUiMode,
+    stageSize,
+  ])
 
   const onTouchPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.pointerType !== 'touch') return
@@ -552,79 +610,250 @@ export function ViewerPage() {
       ? `${Math.min(pageIndex, meta.pageCount - 1) + 1} / ${meta.pageCount}`
       : '?'
 
-  return (
-    <div>
-      <h2>閲覧</h2>
+  const pdfBorder =
+    viewerUiMode === 'annotate' ? '1px solid #ddd' : 'none'
+  const annoPointerEvents =
+    viewerUiMode === 'annotate' ? ('auto' as const) : ('none' as const)
 
-      {isLoading ? <p>読み込み中…</p> : null}
-      {error ? <p style={{ color: 'crimson' }}>{error}</p> : null}
-
-      <p>
-        <strong>ファイル:</strong> {meta?.filename ?? '?'}
-      </p>
-      <p>
-        <strong>ページ:</strong> {pageLabel}
-      </p>
-
-      <AnnotationToolbar
-        tool={tool}
-        onToolChange={setTool}
-        color={penColor}
-        onColorChange={setPenColor}
-        width={penWidth}
-        onWidthChange={setPenWidth}
-        canUndo={historyUi.canUndo}
-        canRedo={historyUi.canRedo}
-        onUndo={handleUndo}
-        onRedo={handleRedo}
+  const scoreCanvasBlock = (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr',
+        width: 'fit-content',
+        maxWidth: '100%',
+        maxHeight: '100%',
+        lineHeight: 0,
+      }}
+    >
+      <canvas
+        ref={pdfCanvasRef}
+        style={{
+          gridColumn: 1,
+          gridRow: 1,
+          display: 'block',
+          maxWidth: '100%',
+          maxHeight: '100%',
+          height: 'auto',
+          border: pdfBorder,
+        }}
       />
+      <canvas
+        ref={annoCanvasRef}
+        onPointerDown={onAnnotPointerDown}
+        onPointerMove={onAnnotPointerMove}
+        onPointerUp={onAnnotPointerUp}
+        onPointerCancel={onAnnotPointerUp}
+        style={{
+          gridColumn: 1,
+          gridRow: 1,
+          zIndex: 1,
+          display: 'block',
+          maxWidth: '100%',
+          maxHeight: '100%',
+          height: 'auto',
+          pointerEvents: annoPointerEvents,
+          touchAction: 'none',
+        }}
+      />
+    </div>
+  )
+
+  if (viewerUiMode === 'perform') {
+    return (
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 10000,
+          background: '#f4f4f5',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        {isLoading ? (
+          <div
+            style={{
+              position: 'absolute',
+              top: 10,
+              left: 12,
+              fontSize: 13,
+              color: '#666',
+              zIndex: 2,
+            }}
+          >
+            読み込み中…
+          </div>
+        ) : null}
+        {error ? (
+          <div
+            style={{
+              position: 'absolute',
+              top: 12,
+              left: 12,
+              right: 72,
+              color: 'crimson',
+              fontSize: 14,
+              zIndex: 2,
+            }}
+          >
+            {error}
+          </div>
+        ) : null}
+        <div
+          ref={stageRef}
+          style={{
+            flex: 1,
+            minHeight: 0,
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            touchAction: 'none',
+            position: 'relative',
+          }}
+          onPointerDown={onTouchPointerDown}
+          onPointerUp={onTouchPointerUp}
+          onPointerCancel={onTouchPointerCancel}
+        >
+          {scoreCanvasBlock}
+        </div>
+        <button
+          type="button"
+          onClick={() => setViewerUiMode('annotate')}
+          aria-label="手書きモードへ切り替え"
+          style={{
+            position: 'absolute',
+            bottom: 14,
+            right: 14,
+            zIndex: 3,
+            padding: '9px 14px',
+            borderRadius: 999,
+            border: '1px solid #c9c9cf',
+            background: 'rgba(255,255,255,0.94)',
+            boxShadow: '0 2px 12px rgba(0,0,0,0.12)',
+            fontSize: 13,
+            cursor: 'pointer',
+          }}
+        >
+          メモ
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        flex: 1,
+        minHeight: 0,
+        width: '100%',
+      }}
+    >
+      <div
+        style={{
+          flexShrink: 0,
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: 6,
+          rowGap: 6,
+          marginBottom: 4,
+        }}
+      >
+        <AnnotationToolbar
+          tool={tool}
+          onToolChange={setTool}
+          color={penColor}
+          onColorChange={setPenColor}
+          width={penWidth}
+          onWidthChange={setPenWidth}
+          canUndo={historyUi.canUndo}
+          canRedo={historyUi.canRedo}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+        />
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            marginLeft: 'auto',
+          }}
+        >
+          <span
+            style={{
+              fontSize: 11,
+              color: '#888',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+            title="ページ"
+          >
+            {pageLabel}
+          </span>
+          <button
+            type="button"
+            onClick={() => setViewerUiMode('perform')}
+            aria-label="演奏表示（最大化）"
+            style={{
+              padding: '4px 10px',
+              borderRadius: 6,
+              border: '1px solid #c5c5cc',
+              background: '#fff',
+              cursor: 'pointer',
+              fontSize: 12,
+            }}
+          >
+            演奏
+          </button>
+          <Link
+            to={homePath()}
+            style={{
+              fontSize: 12,
+              color: '#2c5282',
+              textDecoration: 'none',
+              padding: '4px 6px',
+              borderRadius: 4,
+            }}
+          >
+            一覧
+          </Link>
+        </div>
+      </div>
+
+      {isLoading || error ? (
+        <div
+          style={{
+            fontSize: 11,
+            color: error ? 'crimson' : '#777',
+            marginBottom: 4,
+            flexShrink: 0,
+          }}
+        >
+          {isLoading ? '読み込み…' : error}
+        </div>
+      ) : null}
 
       <div
-        style={{ touchAction: 'none' }}
+        ref={stageRef}
+        style={{
+          flex: 1,
+          minHeight: 0,
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          touchAction: 'none',
+          position: 'relative',
+        }}
         onPointerDown={onTouchPointerDown}
         onPointerUp={onTouchPointerUp}
         onPointerCancel={onTouchPointerCancel}
       >
-        <div
-          style={{
-            position: 'relative',
-            display: 'inline-block',
-            maxWidth: '100%',
-            lineHeight: 0,
-          }}
-        >
-          <canvas
-            ref={pdfCanvasRef}
-            style={{
-              display: 'block',
-              maxWidth: '100%',
-              height: 'auto',
-              border: '1px solid #ddd',
-            }}
-          />
-          <canvas
-            ref={annoCanvasRef}
-            onPointerDown={onAnnotPointerDown}
-            onPointerMove={onAnnotPointerMove}
-            onPointerUp={onAnnotPointerUp}
-            onPointerCancel={onAnnotPointerUp}
-            style={{
-              position: 'absolute',
-              left: 0,
-              top: 0,
-              display: 'block',
-              maxWidth: '100%',
-              height: 'auto',
-              pointerEvents: 'auto',
-              touchAction: 'none',
-            }}
-          />
-        </div>
+        {scoreCanvasBlock}
       </div>
-
-      <p>
-        <Link to={homePath()}>一覧へ戻る</Link>
-      </p>
     </div>
   )
 }

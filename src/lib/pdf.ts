@@ -2,6 +2,7 @@
   getDocument,
   GlobalWorkerOptions,
   type PDFDocumentProxy,
+  type PDFPageProxy,
 } from 'pdfjs-dist'
 import type { RenderTask } from 'pdfjs-dist/types/src/display/api'
 
@@ -16,11 +17,22 @@ function ensureWorker() {
   workerInitialized = true
 }
 
+/** Trailing slash required by pdf.js. Used for JPX / JBIG2 / ICC in image-heavy PDFs. */
+function wasmUrlForPdfJs(): string {
+  const base = import.meta.env.BASE_URL
+  const prefix = base.endsWith('/') ? base : `${base}/`
+  return `${prefix}pdfjs/wasm/`
+}
+
 export type PdfLoadingTask = ReturnType<typeof getDocument>
 
 export function createPdfLoadingTask(pdfBytes: ArrayBuffer): PdfLoadingTask {
   ensureWorker()
-  return getDocument({ data: pdfBytes })
+  // Uint8Array is the most reliable input shape for pdf.js across environments.
+  return getDocument({
+    data: new Uint8Array(pdfBytes),
+    wasmUrl: wasmUrlForPdfJs(),
+  })
 }
 
 export async function loadPdf(pdfBytes: ArrayBuffer): Promise<PDFDocumentProxy> {
@@ -33,6 +45,8 @@ export async function startRenderPageToCanvas(opts: {
   pageIndex: number
   canvas: HTMLCanvasElement
   scale: number
+  /** When set, skips an extra getPage (callers can compute scale from ref viewport first). */
+  page?: PDFPageProxy
 }): Promise<{
   viewportW: number
   viewportH: number
@@ -40,10 +54,10 @@ export async function startRenderPageToCanvas(opts: {
   refViewportH: number
   renderTask: RenderTask
 }> {
-  const { pdf, pageIndex, canvas, scale } = opts
+  const { pdf, pageIndex, canvas, scale, page: pageIn } = opts
 
   const pageNumber = pageIndex + 1
-  const page = await pdf.getPage(pageNumber)
+  const page = pageIn ?? (await pdf.getPage(pageNumber))
 
   const refViewport = page.getViewport({ scale: 1 })
   const viewport = page.getViewport({ scale })
