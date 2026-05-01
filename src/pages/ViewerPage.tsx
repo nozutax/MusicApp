@@ -676,7 +676,7 @@ export function ViewerPage() {
             style={{
               position: 'absolute',
               top: 10,
-              left: 12,
+              left: 56,
               fontSize: 13,
               color: '#666',
               zIndex: 2,
@@ -690,8 +690,8 @@ export function ViewerPage() {
             style={{
               position: 'absolute',
               top: 12,
-              left: 12,
-              right: 72,
+              left: 56,
+              right: 14,
               color: 'crimson',
               fontSize: 14,
               zIndex: 2,
@@ -700,6 +700,23 @@ export function ViewerPage() {
             {error}
           </div>
         ) : null}
+        <Link
+          to={homePath()}
+          aria-label="一覧に戻る"
+          style={{
+            position: 'absolute',
+            top: 14,
+            left: 14,
+            zIndex: 3,
+            fontSize: 12,
+            color: '#2c5282',
+            textDecoration: 'none',
+            padding: '4px 6px',
+            borderRadius: 4,
+          }}
+        >
+          一覧
+        </Link>
         <div
           ref={stageRef}
           style={{

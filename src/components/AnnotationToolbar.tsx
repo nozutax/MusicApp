@@ -26,7 +26,7 @@ const btnBase: React.CSSProperties = {
 const pressed: CSSProperties = {
   borderColor: '#6b6b78',
   background: '#eef0f4',
-  fontWeight: 600,
+  fontWeight: 500,
 }
 
 export function AnnotationToolbar({

@@ -14,10 +14,20 @@ body {
 .app__header h1 {
   margin: 0 0 12px;
   font-size: 20px;
+  font-weight: 600;
 }
 
 .app__main {
   color: #444;
+  font-weight: 350;
+}
+
+.app__main h2 {
+  font-weight: 600;
+}
+
+.app__main button {
+  font-weight: 350;
 }
 
 /* 閲覧ページ: 余白を抑え、子を縦いっぱいに */
