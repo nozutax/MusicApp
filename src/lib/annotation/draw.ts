@@ -11,14 +11,13 @@ export function strokeToCssColor(c: Stroke['color']): string {
   }
 }
 
-/** 線幅（細・中・太）を注釈キャンバスの画像ピクセル（bitmap 座標）に変換する。 */
-export function widthToCanvasPx(w: Stroke['width']): number {
+export function widthToPx(w: Stroke['width']): number {
   switch (w) {
     case 3:
-      return 4
+      return 6
     case 2:
-      return 2
+      return 4
     default:
-      return 1
+      return 2
   }
 }

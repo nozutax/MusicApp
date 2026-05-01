@@ -1,6 +1,6 @@
 import type { Stroke } from '../db'
 import { refPointToCanvas } from './coords'
-import { strokeToCssColor, widthToCanvasPx } from './draw'
+import { strokeToCssColor, widthToPx } from './draw'
 
 function paintStrokePath(
   ctx: CanvasRenderingContext2D,
@@ -11,7 +11,7 @@ function paintStrokePath(
   if (stroke.tool !== 'pen') return
   if (stroke.points.length === 0) return
 
-  const lineW = widthToCanvasPx(stroke.width)
+  const lineW = widthToPx(stroke.width)
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
   ctx.strokeStyle = strokeToCssColor(stroke.color)
