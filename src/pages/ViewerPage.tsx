@@ -24,7 +24,7 @@ import {
   type ScoreMeta,
   type Stroke,
 } from '../lib/db'
-import { classifyHorizontalSwipe } from '../lib/gesture'
+import { classifyHorizontalSwipe, classifyTapZone } from '../lib/gesture'
 import {
   createPdfLoadingTask,
   startRenderPageToCanvas,
@@ -32,6 +32,8 @@ import {
 } from '../lib/pdf'
 
 const SWIPE = { minDx: 120, maxDy: 60 }
+/** タップとみなす最大移動量（px）。仕様例: 10 */
+const TAP_MOVE_MAX = 10
 /** Eraser radius in **screen/CSS pixels**; mapped to reference coords via layout. */
 const ERASER_RADIUS_PX = 14
 
@@ -400,20 +402,17 @@ export function ViewerPage() {
 
   const onTouchPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.pointerType !== 'touch') return
+    if (
+      penPointerIdRef.current !== null ||
+      eraserPointerIdRef.current !== null
+    ) {
+      return
+    }
     touchStartRef.current = { x: e.clientX, y: e.clientY }
     e.currentTarget.setPointerCapture(e.pointerId)
   }
 
-  const onTouchPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (e.pointerType !== 'touch') return
-    const start = touchStartRef.current
-    touchStartRef.current = null
-    if (!start) return
-
-    const dx = e.clientX - start.x
-    const dy = e.clientY - start.y
-    const dir = classifyHorizontalSwipe({ dx, dy }, SWIPE)
-
+  const applyTouchPageNav = (dir: 'prev' | 'next') => {
     const total =
       meta?.pageCount ?? pdfRef.current?.numPages ?? 0
     if (total <= 0) return
@@ -424,11 +423,48 @@ export function ViewerPage() {
         const clamped = Math.min(Math.max(0, p), maxPage)
         return Math.min(clamped + 1, maxPage)
       })
-    } else if (dir === 'prev') {
+    } else {
       setPageIndex((p) => {
         const clamped = Math.min(Math.max(0, p), maxPage)
         return Math.max(clamped - 1, 0)
       })
+    }
+  }
+
+  const onTouchPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== 'touch') return
+    const start = touchStartRef.current
+    touchStartRef.current = null
+    if (!start) return
+    if (
+      penPointerIdRef.current !== null ||
+      eraserPointerIdRef.current !== null
+    ) {
+      return
+    }
+
+    const dx = e.clientX - start.x
+    const dy = e.clientY - start.y
+    let dir = classifyHorizontalSwipe({ dx, dy }, SWIPE)
+
+    if (dir === 'none') {
+      if (
+        Math.abs(dx) <= TAP_MOVE_MAX &&
+        Math.abs(dy) <= TAP_MOVE_MAX
+      ) {
+        const pdfEl = pdfCanvasRef.current
+        if (pdfEl) {
+          const rect = pdfEl.getBoundingClientRect()
+          if (rect.width > 0) {
+            const x = e.clientX - rect.left
+            dir = classifyTapZone(x, rect.width, 0.3)
+          }
+        }
+      }
+    }
+
+    if (dir === 'next' || dir === 'prev') {
+      applyTouchPageNav(dir)
     }
   }
 
