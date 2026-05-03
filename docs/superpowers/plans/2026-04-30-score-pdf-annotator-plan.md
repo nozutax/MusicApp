@@ -458,19 +458,19 @@ git commit -m "feat: render first pdf page with pdfjs"
 
 ---
 
-### Task 6: スワイプ（横）でページ送り（タッチのみ）
+### Task 6: スワイプ＋タップゾーンでページ送り（タッチのみ）
 
 **Files:**
 - Create: `src/lib/gesture.ts`
 - Create: `src/lib/gesture.test.ts`
 - Modify: `src/pages/ViewerPage.tsx`
 
-- [ ] **Step 1: failing test（スワイプ判定）**
+- [ ] **Step 1: failing test（スワイプ判定＋タップゾーン判定）**
 
 ```ts
 // src/lib/gesture.test.ts
 import { describe, expect, it } from "vitest";
-import { classifyHorizontalSwipe } from "./gesture";
+import { classifyHorizontalSwipe, classifyTapZone } from "./gesture";
 
 describe("classifyHorizontalSwipe", () => {
   it("returns next on sufficient left swipe", () => {
@@ -491,6 +491,24 @@ describe("classifyHorizontalSwipe", () => {
     ).toBe("none");
   });
 });
+
+describe("classifyTapZone", () => {
+  it("returns prev when tap is within left 30%", () => {
+    expect(classifyTapZone(50, 1000, 0.3)).toBe("prev");
+    expect(classifyTapZone(299, 1000, 0.3)).toBe("prev");
+  });
+
+  it("returns next when tap is within right 30%", () => {
+    expect(classifyTapZone(701, 1000, 0.3)).toBe("next");
+    expect(classifyTapZone(999, 1000, 0.3)).toBe("next");
+  });
+
+  it("returns none when tap is in the center 40%", () => {
+    expect(classifyTapZone(300, 1000, 0.3)).toBe("none");
+    expect(classifyTapZone(500, 1000, 0.3)).toBe("none");
+    expect(classifyTapZone(700, 1000, 0.3)).toBe("none");
+  });
+});
 ```
 
 - [ ] **Step 2: testを実行してfail確認**
@@ -501,7 +519,7 @@ Run:
 npm test
 ```
 
-Expected: FAIL（`classifyHorizontalSwipe` が存在しない）
+Expected: FAIL（`classifyHorizontalSwipe` / `classifyTapZone` が存在しない）
 
 - [ ] **Step 3: 最小実装**
 
@@ -516,6 +534,19 @@ export function classifyHorizontalSwipe(
   if (delta.dx <= -cfg.minDx) return "next";
   return "none";
 }
+
+export function classifyTapZone(
+  x: number,
+  width: number,
+  ratio = 0.3,
+): "prev" | "next" | "none" {
+  if (width <= 0) return "none";
+  const leftEdge = width * ratio;
+  const rightEdge = width * (1 - ratio);
+  if (x < leftEdge) return "prev";
+  if (x >= rightEdge) return "next";
+  return "none";
+}
 ```
 
 - [ ] **Step 4: testを実行してpass確認**
@@ -526,15 +557,21 @@ npm test
 
 Expected: PASS
 
-- [ ] **Step 5: Viewerへ配線**
+- [ ] **Step 5: Viewerへ配線（スワイプ→タップの優先順）**
 
-`pointerType="touch"` のみ、`pointerdown` から `pointerup` までの移動量で `classifyHorizontalSwipe` を呼び、`pageIndex` を更新→再レンダリング。
+`pointerType="touch"` のみを対象に、楽譜画像表示領域の `pointerdown`〜`pointerup` を記録する。
+
+1. まず `classifyHorizontalSwipe(delta, { minDx, maxDy })` でスワイプ判定
+2. スワイプが `"none"` のとき、`|dx| <= tapThreshold && |dy| <= tapThreshold`（例: 10px）を満たす場合のみ、
+   `pointerdown` の x 座標（表示領域左端基準）と表示領域の幅から `classifyTapZone(x, width, 0.3)` でタップ判定
+3. 得られた `"prev" | "next"` に応じて `pageIndex` を更新→再レンダリング
+4. ペン描画中（`pointerType="pen"` のアクティブストロークが存在する間）はスワイプ／タップ判定を行わない
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add .
-git commit -m "feat: horizontal swipe page navigation for touch"
+git commit -m "feat: horizontal swipe and edge-tap page navigation for touch"
 ```
 
 ---
@@ -959,10 +996,10 @@ git commit -m "feat: finish library management screen"
 - **PDF取り込み/記憶**: Task 4 + Task 3
 - **管理画面（トップ）**: Task 13（一覧/選択/削除、表示はファイル名のみ）
 - **閲覧（1ページ表示）**: Task 5
-- **横スワイプでページ送り**: Task 6（タッチのみ）
+- **スワイプ＋タップゾーンでページ送り**: Task 6（タッチのみ。左右30%タップゾーン対応）
 - **手書き注釈（色/太さ）**: Task 7/8/11
 - **消しゴム**: Task 10
 - **Undo/Redo**: Task 9 + Task 11
 - **注釈の保存/復元（ページ単位）**: Task 8（get/put + 再描画）
-- **誤スワイプ防止（ペンは描画のみ）**: Task 6（タッチのみ）+ Task 8（ペンのみ）
+- **誤スワイプ／誤タップ防止（ペンは描画のみ）**: Task 6（タッチのみ）+ Task 8（ペンのみ）
 
