@@ -23,12 +23,12 @@ body {
   }
 
   .app__main h2 {
-    font-size: 16px;
+    font-size: 18px;
     margin: 0 0 6px;
   }
 
   .app__main p {
-    font-size: 13px;
+    font-size: 15px;
     margin: 0 0 8px;
   }
 }
@@ -40,16 +40,16 @@ body {
 }
 
 .app__main {
-  color: #444;
-  font-weight: 350;
+  color: #1a1a1a;
+  font-weight: 450;
 }
 
 .app__main h2 {
-  font-weight: 600;
+  font-weight: 650;
 }
 
 .app__main button {
-  font-weight: 350;
+  font-weight: 500;
 }
 
 .home-layout {
@@ -82,18 +82,19 @@ body {
 
 .panel-header h2 {
   margin: 0;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 18px;
+  font-weight: 650;
+  color: #111;
 }
 
 .panel-badge {
   display: inline-block;
   padding: 2px 8px;
   border-radius: 999px;
-  background: #f0f0f3;
-  color: #555;
-  font-size: 11px;
-  font-weight: 500;
+  background: #e8e8ec;
+  color: #333;
+  font-size: 13px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -113,8 +114,9 @@ body {
 
 .panel-empty {
   margin: 12px 0 0;
-  font-size: 13px;
-  color: #666;
+  font-size: 15px;
+  color: #333;
+  font-weight: 450;
 }
 
 .panel-list {
@@ -132,10 +134,10 @@ body {
   margin: 0 0 6px;
   padding: 2px 8px;
   border-radius: 4px;
-  background: #f0f0f3;
-  color: #666;
-  font-size: 11px;
-  font-weight: 500;
+  background: #e8e8ec;
+  color: #333;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 /* List rows */
@@ -158,8 +160,9 @@ body {
 }
 
 .list-row__index {
-  color: #888;
-  font-size: 12px;
+  color: #444;
+  font-size: 14px;
+  font-weight: 600;
   text-align: center;
 }
 
@@ -168,8 +171,9 @@ body {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 13px;
-  color: #2c5282;
+  font-size: 15px;
+  font-weight: 500;
+  color: #1a3f6b;
   text-decoration: none;
 }
 
@@ -182,11 +186,13 @@ body {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 13px;
+  font-size: 15px;
+  font-weight: 500;
+  color: #1a1a1a;
 }
 
 .list-row__name--missing {
-  color: #888;
+  color: #555;
 }
 
 .list-row__actions {
@@ -206,13 +212,14 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 32px;
+  min-height: 34px;
   padding: 4px 10px;
-  border: 1px solid #c9c9cf;
+  border: 1px solid #b8b8c0;
   border-radius: 6px;
   background: #fff;
-  color: #333;
-  font-size: 12px;
+  color: #1a1a1a;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
 }
 
@@ -222,9 +229,10 @@ body {
 }
 
 .btn--primary {
-  border-color: #9bb8d9;
-  background: #edf4fc;
-  color: #2c5282;
+  border-color: #7aa3cc;
+  background: #e3eef8;
+  color: #1a3f6b;
+  font-weight: 600;
 }
 
 .btn--danger {
@@ -237,14 +245,15 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   padding: 0;
-  border: 1px solid #c9c9cf;
+  border: 1px solid #b8b8c0;
   border-radius: 6px;
   background: #fff;
-  color: #333;
-  font-size: 16px;
+  color: #1a1a1a;
+  font-size: 18px;
+  font-weight: 600;
   line-height: 1;
   cursor: pointer;
   flex-shrink: 0;
@@ -256,9 +265,9 @@ body {
 }
 
 .btn-icon--primary {
-  border-color: #9bb8d9;
-  background: #edf4fc;
-  color: #2c5282;
+  border-color: #7aa3cc;
+  background: #e3eef8;
+  color: #1a3f6b;
 }
 
 .btn-icon--danger {

@@ -15,7 +15,6 @@ import {
 } from '../lib/db'
 import {
   addEntry,
-  moveEntry,
   pruneMissingScores,
   removeEntry,
 } from '../lib/setlist/ops'
@@ -113,14 +112,6 @@ export function HomePage() {
     await persistSetlist((prev) => removeEntry(prev, entryId))
   }
 
-  async function handleMoveUp(entryId: SetlistEntryId) {
-    await persistSetlist((prev) => moveEntry(prev, entryId, 'up'))
-  }
-
-  async function handleMoveDown(entryId: SetlistEntryId) {
-    await persistSetlist((prev) => moveEntry(prev, entryId, 'down'))
-  }
-
   return (
     <div className="home-layout">
       <section className="home-panel home-panel--library">
@@ -181,8 +172,6 @@ export function HomePage() {
           entries={setlistEntries}
           scoresById={scoresById}
           onRemove={(id) => void handleRemoveFromSetlist(id)}
-          onMoveUp={(id) => void handleMoveUp(id)}
-          onMoveDown={(id) => void handleMoveDown(id)}
         />
       </section>
     </div>

@@ -7,16 +7,12 @@ type Props = {
   entries: SetlistEntry[]
   scoresById: Map<ScoreId, ScoreMeta>
   onRemove: (entryId: SetlistEntryId) => void
-  onMoveUp: (entryId: SetlistEntryId) => void
-  onMoveDown: (entryId: SetlistEntryId) => void
 }
 
 export function SetlistPanel({
   entries,
   scoresById,
   onRemove,
-  onMoveUp,
-  onMoveDown,
 }: Props) {
   return (
     <div>
@@ -31,8 +27,6 @@ export function SetlistPanel({
         <ol className="panel-list">
           {entries.map((entry, index) => {
             const score = scoresById.get(entry.scoreId)
-            const isFirst = index === 0
-            const isLast = index === entries.length - 1
             const displayName = score
               ? stripPdfExtension(score.filename)
               : '（削除済み）'
@@ -55,34 +49,14 @@ export function SetlistPanel({
                     {displayName}
                   </span>
                 )}
-                <div className="list-row__actions">
-                  <button
-                    type="button"
-                    className="btn-icon"
-                    disabled={isFirst}
-                    aria-label={`${score?.filename ?? '曲'}を上へ`}
-                    onClick={() => onMoveUp(entry.id)}
-                  >
-                    ↑
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-icon"
-                    disabled={isLast}
-                    aria-label={`${score?.filename ?? '曲'}を下へ`}
-                    onClick={() => onMoveDown(entry.id)}
-                  >
-                    ↓
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-icon btn-icon--danger"
-                    aria-label={`${score?.filename ?? '曲'}をセットリストから削除`}
-                    onClick={() => onRemove(entry.id)}
-                  >
-                    ×
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  className="btn-icon btn-icon--danger"
+                  aria-label={`${score?.filename ?? '曲'}をセットリストから削除`}
+                  onClick={() => onRemove(entry.id)}
+                >
+                  ×
+                </button>
               </li>
             )
           })}
