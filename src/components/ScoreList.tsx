@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { viewerPath } from '../app/paths'
+import { stripPdfExtension } from '../lib/display/filename'
 import type { ScoreId, ScoreMeta } from '../lib/db'
 import { groupAndSortScores } from '../lib/library/classify'
 
@@ -21,68 +22,56 @@ export function ScoreList({
   const groups = groupAndSortScores(scores)
 
   return (
-    <div style={{ marginTop: 12 }}>
+    <div className="score-list">
       {groups.map(({ category, label, items }) => (
-        <section
-          key={category}
-          style={{ marginBottom: 16 }}
-          aria-label={label}
-        >
-          <h3
-            style={{
-              margin: '0 0 8px',
-              fontSize: 14,
-              color: '#555',
-              borderBottom: '1px solid #e5e5e9',
-              paddingBottom: 4,
-            }}
-          >
-            {label}
-          </h3>
-          <ul
-            style={{
-              listStyle: 'none',
-              padding: 0,
-              margin: 0,
-            }}
-          >
-            {items.map((score) => (
-              <li
-                key={score.id}
-                style={{
-                  display: 'flex',
-                  gap: 12,
-                  alignItems: 'center',
-                  marginBottom: 10,
-                  flexWrap: 'wrap',
-                }}
-              >
-                {deleteMode ? (
-                  <>
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(score.id)}
-                      aria-label={`${score.filename}を選択`}
-                      onChange={() => onToggleSelected?.(score.id)}
-                    />
-                    <span>{score.filename}</span>
-                  </>
-                ) : (
-                  <>
-                    <Link to={viewerPath(score.id)}>{score.filename}</Link>
-                    {onAddToSetlist ? (
-                      <button
-                        type="button"
-                        aria-label={`${score.filename}をセットリストに追加`}
-                        onClick={() => onAddToSetlist(score.id)}
+        <section key={category} className="panel-section" aria-label={label}>
+          <h3 className="category-pill">{label}</h3>
+          <ul className="panel-list">
+            {items.map((score) => {
+              const displayName = stripPdfExtension(score.filename)
+
+              return (
+                <li
+                  key={score.id}
+                  className={
+                    deleteMode ? 'list-row list-row--delete' : 'list-row'
+                  }
+                >
+                  {deleteMode ? (
+                    <>
+                      <input
+                        type="checkbox"
+                        className="list-row__checkbox"
+                        checked={selectedIds.has(score.id)}
+                        aria-label={`${score.filename}を選択`}
+                        onChange={() => onToggleSelected?.(score.id)}
+                      />
+                      <span className="list-row__name">{displayName}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Link
+                        to={viewerPath(score.id)}
+                        className="list-row__title"
+                        title={score.filename}
                       >
-                        追加
-                      </button>
-                    ) : null}
-                  </>
-                )}
-              </li>
-            ))}
+                        {displayName}
+                      </Link>
+                      {onAddToSetlist ? (
+                        <button
+                          type="button"
+                          className="btn-icon btn-icon--primary"
+                          aria-label={`${score.filename}をセットリストに追加`}
+                          onClick={() => onAddToSetlist(score.id)}
+                        >
+                          +
+                        </button>
+                      ) : null}
+                    </>
+                  )}
+                </li>
+              )
+            })}
           </ul>
         </section>
       ))}

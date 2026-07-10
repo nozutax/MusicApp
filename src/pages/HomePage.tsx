@@ -124,19 +124,12 @@ export function HomePage() {
   return (
     <div className="home-layout">
       <section className="home-panel home-panel--library">
-        <h2>ライブラリ</h2>
-        <p>
-          PDFを追加して曲を管理します。一覧のファイル名を開くと閲覧・手書きメモができます。
-        </p>
+        <div className="panel-header">
+          <h2>ライブラリ</h2>
+          <span className="panel-badge">{scores.length}曲</span>
+        </div>
 
-        <div
-          style={{
-            display: 'flex',
-            gap: 8,
-            flexWrap: 'wrap',
-            alignItems: 'center',
-          }}
-        >
+        <div className="panel-toolbar">
           <FileImportButton
             onImported={async () => {
               await refresh()
@@ -145,6 +138,7 @@ export function HomePage() {
           {!deleteMode ? (
             <button
               type="button"
+              className="btn"
               disabled={scores.length === 0}
               onClick={enterDeleteMode}
             >
@@ -152,11 +146,12 @@ export function HomePage() {
             </button>
           ) : (
             <>
-              <button type="button" onClick={exitDeleteMode}>
+              <button type="button" className="btn" onClick={exitDeleteMode}>
                 キャンセル
               </button>
               <button
                 type="button"
+                className="btn btn--danger"
                 disabled={selectedIds.size === 0}
                 onClick={() => void handleBulkDelete()}
               >
@@ -167,8 +162,8 @@ export function HomePage() {
         </div>
 
         {scores.length === 0 ? (
-          <p style={{ marginTop: 16 }}>
-            まだ曲がありません。「PDF追加」から画譜を取り込んでください。
+          <p className="panel-empty">
+            まだ曲がありません。「＋ PDF」から画譜を取り込んでください。
           </p>
         ) : (
           <ScoreList
