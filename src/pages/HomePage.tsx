@@ -1,4 +1,5 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { FileImportButton } from '../components/FileImportButton'
 import { ScoreList } from '../components/ScoreList'
 import { SetlistPanel } from '../components/SetlistPanel'
@@ -20,11 +21,13 @@ import {
 } from '../lib/setlist/ops'
 
 export function HomePage() {
+  const location = useLocation()
   const [scores, setScores] = useState<ScoreMeta[]>([])
   const [setlistEntries, setSetlistEntries] = useState<SetlistEntry[]>([])
   const [deleteMode, setDeleteMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<ScoreId>>(() => new Set())
   const mountedRef = useRef(false)
+  const setlistEntriesRef = useRef<SetlistEntry[]>([])
 
   const scoresById = useMemo(
     () => new Map(scores.map((s) => [s.id, s])),
@@ -40,6 +43,7 @@ export function HomePage() {
     if (mountedRef.current) {
       setScores(rows)
       setSetlistEntries(pruned)
+      setlistEntriesRef.current = pruned
     }
   }, [])
 
@@ -49,16 +53,14 @@ export function HomePage() {
     return () => {
       mountedRef.current = false
     }
-  }, [refresh])
+  }, [refresh, location.key])
 
   async function persistSetlist(
     updater: (prev: SetlistEntry[]) => SetlistEntry[],
   ) {
-    let next: SetlistEntry[] = []
-    setSetlistEntries((prev) => {
-      next = updater(prev)
-      return next
-    })
+    const next = updater(setlistEntriesRef.current)
+    setlistEntriesRef.current = next
+    setSetlistEntries(next)
     await saveActiveSetlist(next)
   }
 
