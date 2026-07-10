@@ -9,6 +9,28 @@ body {
 
 .app {
   padding: 24px;
+  box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+  .app {
+    padding: 8px;
+  }
+
+  .app__header h1 {
+    margin: 0 0 8px;
+    font-size: 16px;
+  }
+
+  .app__main h2 {
+    font-size: 16px;
+    margin: 0 0 6px;
+  }
+
+  .app__main p {
+    font-size: 13px;
+    margin: 0 0 8px;
+  }
 }
 
 .app__header h1 {
@@ -35,13 +57,15 @@ body {
   grid-template-columns: 1fr 1fr;
   gap: 0;
   min-height: calc(100dvh - 80px);
-  margin: 0 -8px;
+  margin: 0 -4px;
 }
 
 .home-panel {
-  padding: 0 16px;
+  padding: 0 8px;
+  overflow-x: hidden;
   overflow-y: auto;
   min-height: 0;
+  min-width: 0;
 }
 
 .home-panel--library {
@@ -50,15 +74,12 @@ body {
 
 @media (max-width: 768px) {
   .home-layout {
-    grid-template-columns: 1fr;
-    min-height: auto;
+    min-height: calc(100dvh - 56px);
+    margin: 0;
   }
 
-  .home-panel--library {
-    border-right: none;
-    border-bottom: 1px solid #e5e5e9;
-    padding-bottom: 16px;
-    margin-bottom: 16px;
+  .home-panel {
+    padding: 0 6px;
   }
 }
 
