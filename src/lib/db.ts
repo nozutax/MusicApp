@@ -37,6 +37,21 @@ export type PageAnnotationRecord = {
   strokes: Stroke[]
 }
 
+export type SetlistEntryId = string
+
+export type SetlistEntry = {
+  id: SetlistEntryId
+  scoreId: ScoreId
+}
+
+export type SetlistRecord = {
+  id: 'active'
+  entries: SetlistEntry[]
+  updatedAt: number
+}
+
+const ACTIVE_SETLIST_ID = 'active' as const
+
 type ScoreShelfDbSchema = DBSchema & {
   scores: {
     key: ScoreId
@@ -52,13 +67,17 @@ type ScoreShelfDbSchema = DBSchema & {
     value: PageAnnotationRecord
     indexes: { 'by-scoreId': ScoreId }
   }
+  setlists: {
+    key: 'active'
+    value: SetlistRecord
+  }
 }
 
 let dbPromise: Promise<IDBPDatabase<ScoreShelfDbSchema>> | null = null
 
 export function getDb() {
   if (!dbPromise) {
-    dbPromise = openDB<ScoreShelfDbSchema>('score-shelf', 2, {
+    dbPromise = openDB<ScoreShelfDbSchema>('score-shelf', 3, {
       async upgrade(db, oldVersion, _newVersion, tx) {
         if (oldVersion < 1) {
           const scores = db.createObjectStore('scores', { keyPath: 'id' })
@@ -95,6 +114,12 @@ export function getDb() {
                 await scoresStore.put(meta as unknown as ScoreMeta)
               }
             }
+          }
+        }
+
+        if (oldVersion < 3) {
+          if (!db.objectStoreNames.contains('setlists')) {
+            db.createObjectStore('setlists', { keyPath: 'id' })
           }
         }
       },
@@ -162,9 +187,29 @@ export async function getPdfBytes(
   return raw ? raw.slice(0) : undefined
 }
 
+export async function getActiveSetlist(): Promise<SetlistEntry[]> {
+  const db = await getDb()
+  const record = await db.get('setlists', ACTIVE_SETLIST_ID)
+  return record?.entries ?? []
+}
+
+export async function saveActiveSetlist(entries: SetlistEntry[]): Promise<void> {
+  const db = await getDb()
+  const tx = db.transaction('setlists', 'readwrite')
+  await tx.store.put({
+    id: ACTIVE_SETLIST_ID,
+    entries,
+    updatedAt: Date.now(),
+  })
+  await tx.done
+}
+
 export async function deleteScore(id: ScoreId): Promise<void> {
   const db = await getDb()
-  const tx = db.transaction(['scores', 'pdfs', 'annotations'], 'readwrite')
+  const tx = db.transaction(
+    ['scores', 'pdfs', 'annotations', 'setlists'],
+    'readwrite',
+  )
 
   await tx.objectStore('scores').delete(id)
   await tx.objectStore('pdfs').delete(id)
@@ -176,6 +221,19 @@ export async function deleteScore(id: ScoreId): Promise<void> {
   while (cursor) {
     await annotationsStore.delete(cursor.primaryKey)
     cursor = await cursor.continue()
+  }
+
+  const setlistsStore = tx.objectStore('setlists')
+  const activeSetlist = await setlistsStore.get(ACTIVE_SETLIST_ID)
+  if (activeSetlist) {
+    const pruned = activeSetlist.entries.filter((e) => e.scoreId !== id)
+    if (pruned.length !== activeSetlist.entries.length) {
+      await setlistsStore.put({
+        id: ACTIVE_SETLIST_ID,
+        entries: pruned,
+        updatedAt: Date.now(),
+      })
+    }
   }
 
   await tx.done

@@ -30,6 +30,38 @@ body {
   font-weight: 350;
 }
 
+.home-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  min-height: calc(100dvh - 80px);
+  margin: 0 -8px;
+}
+
+.home-panel {
+  padding: 0 16px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.home-panel--library {
+  border-right: 1px solid #e5e5e9;
+}
+
+@media (max-width: 768px) {
+  .home-layout {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+
+  .home-panel--library {
+    border-right: none;
+    border-bottom: 1px solid #e5e5e9;
+    padding-bottom: 16px;
+    margin-bottom: 16px;
+  }
+}
+
 /* 閲覧ページ: 余白を抑え、子を縦いっぱいに */
 .app--viewer {
   padding: 6px 8px 8px;

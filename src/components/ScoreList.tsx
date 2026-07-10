@@ -1,26 +1,23 @@
 import { Link } from 'react-router-dom'
 import { viewerPath } from '../app/paths'
-import { deleteScore, type ScoreMeta } from '../lib/db'
+import type { ScoreId, ScoreMeta } from '../lib/db'
 import { groupAndSortScores } from '../lib/library/classify'
 
 type Props = {
   scores: ScoreMeta[]
-  onChanged: () => void
+  deleteMode?: boolean
+  selectedIds?: Set<ScoreId>
+  onToggleSelected?: (id: ScoreId) => void
+  onAddToSetlist?: (id: ScoreId) => void
 }
 
-export function ScoreList({ scores, onChanged }: Props) {
-  async function handleDelete(score: ScoreMeta) {
-    if (
-      !confirm(
-        `「${score.filename}」と保存された注釈を削除します。よろしいですか？`,
-      )
-    ) {
-      return
-    }
-    await deleteScore(score.id)
-    await onChanged()
-  }
-
+export function ScoreList({
+  scores,
+  deleteMode = false,
+  selectedIds = new Set(),
+  onToggleSelected,
+  onAddToSetlist,
+}: Props) {
   const groups = groupAndSortScores(scores)
 
   return (
@@ -60,10 +57,30 @@ export function ScoreList({ scores, onChanged }: Props) {
                   flexWrap: 'wrap',
                 }}
               >
-                <Link to={viewerPath(score.id)}>{score.filename}</Link>
-                <button type="button" onClick={() => void handleDelete(score)}>
-                  削除
-                </button>
+                {deleteMode ? (
+                  <>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(score.id)}
+                      aria-label={`${score.filename}を選択`}
+                      onChange={() => onToggleSelected?.(score.id)}
+                    />
+                    <span>{score.filename}</span>
+                  </>
+                ) : (
+                  <>
+                    <Link to={viewerPath(score.id)}>{score.filename}</Link>
+                    {onAddToSetlist ? (
+                      <button
+                        type="button"
+                        aria-label={`${score.filename}をセットリストに追加`}
+                        onClick={() => onAddToSetlist(score.id)}
+                      >
+                        追加
+                      </button>
+                    ) : null}
+                  </>
+                )}
               </li>
             ))}
           </ul>
