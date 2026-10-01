@@ -63,8 +63,10 @@ export function ViewerPage() {
   const [historyUi, setHistoryUi] = useState({ canUndo: false, canRedo: false })
 
   const [tool, setTool] = useState<'pen' | 'eraser'>('pen')
-  const [penColor, setPenColor] = useState<'black' | 'red' | 'blue'>('black')
-  const [penWidth, setPenWidth] = useState<1 | 2 | 3>(2)
+  const [penColor, setPenColor] = useState<'black' | 'red' | 'blue' | 'yellow'>(
+    'red',
+  )
+  const [penWidth, setPenWidth] = useState<1 | 2 | 3>(1)
 
   const pdfCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const annoCanvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -402,6 +404,7 @@ export function ViewerPage() {
 
   const onTouchPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.pointerType !== 'touch') return
+    if (viewerUiMode === 'annotate') return
     if (
       penPointerIdRef.current !== null ||
       eraserPointerIdRef.current !== null
@@ -433,6 +436,7 @@ export function ViewerPage() {
 
   const onTouchPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.pointerType !== 'touch') return
+    if (viewerUiMode === 'annotate') return
     const start = touchStartRef.current
     touchStartRef.current = null
     if (!start) return

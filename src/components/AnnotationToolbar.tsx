@@ -3,8 +3,8 @@ import type { CSSProperties } from 'react'
 type Props = {
   tool: 'pen' | 'eraser'
   onToolChange: (tool: 'pen' | 'eraser') => void
-  color: 'black' | 'red' | 'blue'
-  onColorChange: (color: 'black' | 'red' | 'blue') => void
+  color: 'black' | 'red' | 'blue' | 'yellow'
+  onColorChange: (color: 'black' | 'red' | 'blue' | 'yellow') => void
   width: 1 | 2 | 3
   onWidthChange: (width: 1 | 2 | 3) => void
   canUndo: boolean
@@ -85,17 +85,18 @@ export function AnnotationToolbar({
 
       {(
         [
-          ['black', '#1a1a1e'],
-          ['red', '#c41e1e'],
-          ['blue', '#1e5bc4'],
+          ['black', '#1a1a1e', '黒'],
+          ['red', '#c41e1e', '赤'],
+          ['blue', '#1e5bc4', '青'],
+          ['yellow', '#e6c200', '黄'],
         ] as const
-      ).map(([c, dot]) => (
+      ).map(([c, dot, label]) => (
         <button
           key={c}
           type="button"
           aria-pressed={color === c}
-          aria-label={c === 'black' ? '黒' : c === 'red' ? '赤' : '青'}
-          title={c === 'black' ? '黒' : c === 'red' ? '赤' : '青'}
+          aria-label={label}
+          title={label}
           disabled={tool === 'eraser'}
           onClick={() => onColorChange(c)}
           style={{

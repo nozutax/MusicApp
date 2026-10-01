@@ -23,7 +23,7 @@ export type AnnotationPoint = {
 
 export type Stroke = {
   tool: 'pen' | 'eraser'
-  color?: 'black' | 'red' | 'blue'
+  color?: 'black' | 'red' | 'blue' | 'yellow'
   width: 1 | 2 | 3
   points: AnnotationPoint[]
 }
